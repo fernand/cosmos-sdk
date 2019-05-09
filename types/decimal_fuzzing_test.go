@@ -24,7 +24,6 @@ func genDec() gopter.Gen {
 		"Int": bigInt(),
 	})
 }
-
 func TestStrToDectoStr(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
 	parameters.MinSuccessfulTests = 100000
@@ -46,7 +45,6 @@ func TestStrToDectoStr(t *testing.T) {
 
 	properties.TestingRun(t)
 }
-
 func TestDocToStrToDec(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
 	parameters.MinSuccessfulTests = 100000
@@ -66,4 +64,26 @@ func TestDocToStrToDec(t *testing.T) {
 	))
 
 	properties.TestingRun(t)
+}
+
+var (
+	zeroDec = ZeroDec()
+	oneDec  = OneDec()
+)
+
+func TestSmallMul(t *testing.T) {
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = 100000
+	properties := gopter.NewProperties(parameters)
+
+	properties.Property("Ensure exponentiation of decimals < 1 stays < 1", prop.ForAll(
+		func(d Dec) bool {
+			tmp := d
+			for i := 0; i < 10000; i++ {
+				tmp = tmp.Mul(tmp)
+			}
+			return tmp.LT(oneDec)
+		},
+		genDec().SuchThat(func(d Dec) bool { return d.GT(zeroDec) && d.LT(oneDec) }),
+	))
 }
