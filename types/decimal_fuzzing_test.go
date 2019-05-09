@@ -2,8 +2,8 @@ package types
 
 import (
 	"fmt"
-	"math/big"
-	"reflect"
+	"math"
+	"strconv"
 	"testing"
 
 	"github.com/leanovate/gopter"
@@ -11,19 +11,32 @@ import (
 	"github.com/leanovate/gopter/prop"
 )
 
-func int64ToBigInt(i int64) *big.Int {
-	return big.NewInt(i)
-}
+var printFloatStr = "%." + strconv.Itoa(Precision) + "f"
+var smallestFloat = math.Pow10(-Precision)
 
-func bigInt() gopter.Gen {
-	return gen.Int64().Map(int64ToBigInt)
+// We'll use gopter's float64 generator to generate Decs.
+func floatToDec(f float64) Dec {
+	// Negative numbers which are < 1e-Precision should appear as
+	// 0.000000000000000000 and not -0.000000000000000000
+	if math.Signbit(f) == true && math.Abs(f) < smallestFloat {
+		f = f * -1.0
+	}
+	floatStr := fmt.Sprintf(printFloatStr, f)
+	d, err := NewDecFromStr(floatStr)
+	if err != nil {
+		return ZeroDec()
+	}
+	return d
 }
 
 func genDec() gopter.Gen {
-	return gen.Struct(reflect.TypeOf(&Dec{}), map[string]gopter.Gen{
-		"Int": bigInt(),
-	})
+	return gen.Float64().Map(floatToDec)
 }
+
+func genDecRange(min, max float64) gopter.Gen {
+	return gen.Float64Range(min, max).Map(floatToDec)
+}
+
 func TestStrToDectoStr(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
 	parameters.MinSuccessfulTests = 100000
@@ -32,7 +45,12 @@ func TestStrToDectoStr(t *testing.T) {
 	properties.Property("Check String -> Dec -> String idempotence", prop.ForAll(
 		// Using gopter's float generator and converting that into a string.
 		func(f float64) bool {
-			floatStr := fmt.Sprintf("%f.%d", f, Precision)
+			// Negative numbers which are < 1e-Precision should appear as
+			// 0.000000000000000000 and not -0.000000000000000000
+			if math.Signbit(f) == true && math.Abs(f) < smallestFloat {
+				f = f * -1.0
+			}
+			floatStr := fmt.Sprintf(printFloatStr, f)
 			d, err := NewDecFromStr(floatStr)
 			if err != nil {
 				return true
@@ -47,7 +65,7 @@ func TestStrToDectoStr(t *testing.T) {
 }
 func TestDocToStrToDec(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 100000
+	parameters.MinSuccessfulTests = 10000
 	properties := gopter.NewProperties(parameters)
 
 	properties.Property("Check Dec -> String -> Dec idempotence", prop.ForAll(
@@ -66,24 +84,23 @@ func TestDocToStrToDec(t *testing.T) {
 	properties.TestingRun(t)
 }
 
-var (
-	zeroDec = ZeroDec()
-	oneDec  = OneDec()
-)
-
 func TestSmallMul(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 100000
+	parameters.MinSuccessfulTests = 10000
 	properties := gopter.NewProperties(parameters)
+
+	oneDec := NewDec(1)
 
 	properties.Property("Ensure exponentiation of decimals < 1 stays < 1", prop.ForAll(
 		func(d Dec) bool {
-			tmp := d
-			for i := 0; i < 10000; i++ {
-				tmp = tmp.Mul(tmp)
+			exp := NewDec(1)
+			for i := 0; i < 1000; i++ {
+				exp = exp.Mul(d)
 			}
-			return tmp.LT(oneDec)
+			return exp.LT(oneDec)
 		},
-		genDec().SuchThat(func(d Dec) bool { return d.GT(zeroDec) && d.LT(oneDec) }),
+		genDecRange(0.0, 1.0),
 	))
+
+	properties.TestingRun(t)
 }
