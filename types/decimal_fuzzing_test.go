@@ -139,3 +139,19 @@ func TestMulQuo(t *testing.T) {
 
 	properties.TestingRun(t)
 }
+
+func TestCeil(t *testing.T) {
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = 10000
+	properties := gopter.NewProperties(parameters)
+
+	properties.Property("Ensure idempotence of Quo and Mul", prop.ForAll(
+		func(d Dec) bool {
+			ceil := d.Ceil()
+			return ceil.GTE(d)
+		},
+		genDec(),
+	))
+
+	properties.TestingRun(t)
+}
