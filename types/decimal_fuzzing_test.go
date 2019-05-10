@@ -114,12 +114,18 @@ func TestMulQuo(t *testing.T) {
 
 	properties.Property("Ensure idempotence of Quo and Mul", prop.ForAll(
 		func(d1 Dec, d2 Dec) (res bool) {
+			res = false
 			defer func() {
 				if recover() != nil {
 					res = true
 				}
 			}()
 			tmp := d1.Quo(d2)
+			// It's possible that the first division was destructive
+			// eg giving 0. In that case return true.
+			if tmp.Equal(zeroDec) {
+				return true
+			}
 			tmp = tmp.Mul(d2)
 			fmt.Println(d1, tmp, "BLAH")
 			res = d1.Equal(tmp)
