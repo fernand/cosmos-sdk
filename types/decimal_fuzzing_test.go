@@ -65,7 +65,7 @@ func TestStrToDectoStr(t *testing.T) {
 }
 func TestDocToStrToDec(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 10000
+	parameters.MinSuccessfulTests = 100000
 	properties := gopter.NewProperties(parameters)
 
 	properties.Property("Check Dec -> String -> Dec idempotence", prop.ForAll(
@@ -127,7 +127,7 @@ func TestMulQuo(t *testing.T) {
 				return true
 			}
 			tmp = tmp.Mul(d2)
-			fmt.Println(d1, tmp, "BLAH")
+			fmt.Println(d1, tmp, "EOT")
 			res = d1.Equal(tmp)
 			return
 		},
@@ -142,10 +142,10 @@ func TestMulQuo(t *testing.T) {
 
 func TestCeil(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 10000
+	parameters.MinSuccessfulTests = 100000
 	properties := gopter.NewProperties(parameters)
 
-	properties.Property("Ensure idempotence of Quo and Mul", prop.ForAll(
+	properties.Property("Ensure Ceil is always >= orginial Dec", prop.ForAll(
 		func(d Dec) bool {
 			ceil := d.Ceil()
 			return ceil.GTE(d)
