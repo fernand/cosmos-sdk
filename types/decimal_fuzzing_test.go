@@ -104,3 +104,32 @@ func TestSmallMul(t *testing.T) {
 
 	properties.TestingRun(t)
 }
+
+func TestMulQuo(t *testing.T) {
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = 10000
+	properties := gopter.NewProperties(parameters)
+
+	zeroDec := NewDec(0)
+
+	properties.Property("Ensure idempotence of Quo and Mul", prop.ForAll(
+		func(d1 Dec, d2 Dec) (res bool) {
+			defer func() {
+				if recover() != nil {
+					res = true
+				}
+			}()
+			tmp := d1.Quo(d2)
+			tmp = tmp.Mul(d2)
+			fmt.Println(d1, tmp, "BLAH")
+			res = d1.Equal(tmp)
+			return
+		},
+		genDec(),
+		genDec().SuchThat(func(d Dec) bool {
+			return !d.Equal(zeroDec)
+		}),
+	))
+
+	properties.TestingRun(t)
+}
