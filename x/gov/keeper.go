@@ -11,6 +11,36 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 )
 
+// Branch coverage
+var GovBranchesReached = map[string]bool{
+	"1SubmitProposal1":        false,
+	"2GetProposal1":           false,
+	"3GetProposalFiltered1":   false,
+	"3GetProposalFiltered2":   false,
+	"3GetProposalFiltered3":   false,
+	"3GetProposalFiltered4":   false,
+	"3GetProposalFiltered5":   false,
+	"3GetProposalFiltered6":   false,
+	"3GetProposalFiltered7":   false,
+	"3GetProposalFiltered8":   false,
+	"3GetProposalFiltered9":   false,
+	"4setInitialProposalID1":  false,
+	"5GetLastProposalID1":     false,
+	"6getNewProposalID1":      false,
+	"7peekCurrentProposalID1": false,
+	"8AddVote1":               false,
+	"8AddVote2":               false,
+	"8AddVote3":               false,
+	"9GetVote1":               false,
+	"10GetDeposit1":           false,
+	"11AddDeposit1":           false,
+	"11AddDeposit2":           false,
+	"11AddDeposit3":           false,
+	"11AddDeposit4":           false,
+	"11AddDeposit5":           false,
+	"11AddDeposit6":           false,
+}
+
 // Parameter store key
 var (
 	ParamStoreKeyDepositParams = []byte("depositparams")
@@ -109,6 +139,7 @@ func (keeper Keeper) SubmitProposal(ctx sdk.Context, content Content) (Proposal,
 
 	proposalID, err := keeper.getNewProposalID(ctx)
 	if err != nil {
+		GovBranchesReached["1SubmitProposal1"] = true
 		return Proposal{}, err
 	}
 
@@ -128,6 +159,7 @@ func (keeper Keeper) GetProposal(ctx sdk.Context, proposalID uint64) (proposal P
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyProposal(proposalID))
 	if bz == nil {
+		GovBranchesReached["2GetProposal1"] = true
 		return
 	}
 	keeper.cdc.MustUnmarshalBinaryLengthPrefixed(bz, &proposal)
@@ -162,37 +194,46 @@ func (keeper Keeper) GetProposalsFiltered(ctx sdk.Context, voterAddr sdk.AccAddr
 
 	maxProposalID, err := keeper.peekCurrentProposalID(ctx)
 	if err != nil {
+		GovBranchesReached["3GetProposalFiltered1"] = true
 		return nil
 	}
 
 	matchingProposals := []Proposal{}
 
 	if numLatest == 0 {
+		GovBranchesReached["3GetProposalFiltered2"] = true
 		numLatest = maxProposalID
 	}
 
 	for proposalID := maxProposalID - numLatest; proposalID < maxProposalID; proposalID++ {
 		if voterAddr != nil && len(voterAddr) != 0 {
+			GovBranchesReached["3GetProposalFiltered3"] = true
 			_, found := keeper.GetVote(ctx, proposalID, voterAddr)
 			if !found {
+				GovBranchesReached["3GetProposalFiltered4"] = true
 				continue
 			}
 		}
 
 		if depositorAddr != nil && len(depositorAddr) != 0 {
+			GovBranchesReached["3GetProposalFiltered5"] = true
 			_, found := keeper.GetDeposit(ctx, proposalID, depositorAddr)
 			if !found {
+				GovBranchesReached["3GetProposalFiltered6"] = true
 				continue
 			}
 		}
 
 		proposal, ok := keeper.GetProposal(ctx, proposalID)
 		if !ok {
+			GovBranchesReached["3GetProposalFiltered7"] = true
 			continue
 		}
 
 		if ValidProposalStatus(status) {
+			GovBranchesReached["3GetProposalFiltered8"] = true
 			if proposal.Status != status {
+				GovBranchesReached["3GetProposalFiltered9"] = true
 				continue
 			}
 		}
@@ -207,6 +248,7 @@ func (keeper Keeper) setInitialProposalID(ctx sdk.Context, proposalID uint64) sd
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyNextProposalID)
 	if bz != nil {
+		GovBranchesReached["4setInitialProposalID1"] = true
 		return ErrInvalidGenesis(keeper.codespace, "initial proposal ID already set")
 	}
 	bz = keeper.cdc.MustMarshalBinaryLengthPrefixed(proposalID)
@@ -218,6 +260,7 @@ func (keeper Keeper) setInitialProposalID(ctx sdk.Context, proposalID uint64) sd
 func (keeper Keeper) GetLastProposalID(ctx sdk.Context) (proposalID uint64) {
 	proposalID, err := keeper.peekCurrentProposalID(ctx)
 	if err != nil {
+		GovBranchesReached["5GetLastProposalID1"] = true
 		return 0
 	}
 	proposalID--
@@ -229,6 +272,7 @@ func (keeper Keeper) getNewProposalID(ctx sdk.Context) (proposalID uint64, err s
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyNextProposalID)
 	if bz == nil {
+		GovBranchesReached["6getNewProposalID1"] = true
 		return 0, ErrInvalidGenesis(keeper.codespace, "initial proposal ID never set")
 	}
 	keeper.cdc.MustUnmarshalBinaryLengthPrefixed(bz, &proposalID)
@@ -242,6 +286,7 @@ func (keeper Keeper) peekCurrentProposalID(ctx sdk.Context) (proposalID uint64, 
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyNextProposalID)
 	if bz == nil {
+		GovBranchesReached["7peekCurrentProposalID1"] = true
 		return 0, ErrInvalidGenesis(keeper.codespace, "initial proposal ID never set")
 	}
 	keeper.cdc.MustUnmarshalBinaryLengthPrefixed(bz, &proposalID)
@@ -300,13 +345,16 @@ func (keeper Keeper) setTallyParams(ctx sdk.Context, tallyParams TallyParams) {
 func (keeper Keeper) AddVote(ctx sdk.Context, proposalID uint64, voterAddr sdk.AccAddress, option VoteOption) sdk.Error {
 	proposal, ok := keeper.GetProposal(ctx, proposalID)
 	if !ok {
+		GovBranchesReached["8AddVote1"] = true
 		return ErrUnknownProposal(keeper.codespace, proposalID)
 	}
 	if proposal.Status != StatusVotingPeriod {
+		GovBranchesReached["8AddVote2"] = true
 		return ErrInactiveProposal(keeper.codespace, proposalID)
 	}
 
 	if !ValidVoteOption(option) {
+		GovBranchesReached["8AddVote3"] = true
 		return ErrInvalidVote(keeper.codespace, option)
 	}
 
@@ -325,6 +373,7 @@ func (keeper Keeper) GetVote(ctx sdk.Context, proposalID uint64, voterAddr sdk.A
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyVote(proposalID, voterAddr))
 	if bz == nil {
+		GovBranchesReached["9GetVote1"] = true
 		return Vote{}, false
 	}
 	var vote Vote
@@ -356,6 +405,7 @@ func (keeper Keeper) GetDeposit(ctx sdk.Context, proposalID uint64, depositorAdd
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyDeposit(proposalID, depositorAddr))
 	if bz == nil {
+		GovBranchesReached["10GetDeposit1"] = true
 		return Deposit{}, false
 	}
 	var deposit Deposit
@@ -375,11 +425,13 @@ func (keeper Keeper) AddDeposit(ctx sdk.Context, proposalID uint64, depositorAdd
 	// Checks to see if proposal exists
 	proposal, ok := keeper.GetProposal(ctx, proposalID)
 	if !ok {
+		GovBranchesReached["11AddDeposit1"] = true
 		return ErrUnknownProposal(keeper.codespace, proposalID), false
 	}
 
 	// Check if proposal is still depositable
 	if (proposal.Status != StatusDepositPeriod) && (proposal.Status != StatusVotingPeriod) {
+		GovBranchesReached["11AddDeposit2"] = true
 		return ErrAlreadyFinishedProposal(keeper.codespace, proposalID), false
 	}
 
@@ -387,6 +439,7 @@ func (keeper Keeper) AddDeposit(ctx sdk.Context, proposalID uint64, depositorAdd
 	// TODO: Don't use an account for this purpose; it's clumsy and prone to misuse.
 	err := keeper.ck.SendCoins(ctx, depositorAddr, DepositedCoinsAccAddr, depositAmount)
 	if err != nil {
+		GovBranchesReached["11AddDeposit3"] = true
 		return err, false
 	}
 
@@ -397,6 +450,7 @@ func (keeper Keeper) AddDeposit(ctx sdk.Context, proposalID uint64, depositorAdd
 	// Check if deposit has provided sufficient total funds to transition the proposal into the voting period
 	activatedVotingPeriod := false
 	if proposal.Status == StatusDepositPeriod && proposal.TotalDeposit.IsAllGTE(keeper.GetDepositParams(ctx).MinDeposit) {
+		GovBranchesReached["11AddDeposit4"] = true
 		keeper.activateVotingPeriod(ctx, proposal)
 		activatedVotingPeriod = true
 	}
@@ -404,9 +458,11 @@ func (keeper Keeper) AddDeposit(ctx sdk.Context, proposalID uint64, depositorAdd
 	// Add or update deposit object
 	currDeposit, found := keeper.GetDeposit(ctx, proposalID, depositorAddr)
 	if !found {
+		GovBranchesReached["11AddDeposit5"] = true
 		newDeposit := Deposit{depositorAddr, proposalID, depositAmount}
 		keeper.setDeposit(ctx, proposalID, depositorAddr, newDeposit)
 	} else {
+		GovBranchesReached["11AddDeposit6"] = true
 		currDeposit.Amount = currDeposit.Amount.Add(depositAmount)
 		keeper.setDeposit(ctx, proposalID, depositorAddr, currDeposit)
 	}

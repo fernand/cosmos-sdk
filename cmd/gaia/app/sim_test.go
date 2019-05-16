@@ -369,6 +369,7 @@ func TestFullGaiaSimulation(t *testing.T) {
 		fmt.Println("GoLevelDB cached block size", db.Stats()["leveldb.cachedblock"])
 	}
 	require.Nil(t, err)
+	fmt.Println(gov.GovBranchesReached)
 }
 
 func TestGaiaImportExport(t *testing.T) {
