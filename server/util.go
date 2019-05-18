@@ -105,17 +105,13 @@ func interceptLoadConfig() (conf *cfg.Config, err error) {
 		conf, err = tcmd.ParseConfig() // NOTE: ParseConfig() creates dir/files as necessary.
 	}
 
-	// create a default Gaia config file if it does not exist
-	//
-	// TODO: Rename config file to server.toml as it's not particular to Gaia
-	// (REF: https://github.com/cosmos/cosmos-sdk/issues/4125).
-	gaiaConfigFilePath := filepath.Join(rootDir, "config/gaiad.toml")
-	if _, err := os.Stat(gaiaConfigFilePath); os.IsNotExist(err) {
-		gaiaConf, _ := config.ParseConfig()
-		config.WriteConfigFile(gaiaConfigFilePath, gaiaConf)
+	appConfigFilePath := filepath.Join(rootDir, "config/app.toml")
+	if _, err := os.Stat(appConfigFilePath); os.IsNotExist(err) {
+		appConf, _ := config.ParseConfig()
+		config.WriteConfigFile(appConfigFilePath, appConf)
 	}
 
-	viper.SetConfigName("gaiad")
+	viper.SetConfigName("app")
 	err = viper.MergeInConfig()
 
 	return
@@ -216,14 +212,17 @@ func TrapSignal(cleanupFunc func()) {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigs
-		switch sig {
-		case syscall.SIGTERM:
-			defer cleanupFunc()
-			os.Exit(128 + int(syscall.SIGTERM))
-		case syscall.SIGINT:
-			defer cleanupFunc()
-			os.Exit(128 + int(syscall.SIGINT))
+		if cleanupFunc != nil {
+			cleanupFunc()
 		}
+		exitCode := 128
+		switch sig {
+		case syscall.SIGINT:
+			exitCode += int(syscall.SIGINT)
+		case syscall.SIGTERM:
+			exitCode += int(syscall.SIGTERM)
+		}
+		os.Exit(exitCode)
 	}()
 }
 
