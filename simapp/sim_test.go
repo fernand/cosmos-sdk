@@ -302,7 +302,7 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 		{50, distrsim.SimulateMsgWithdrawValidatorCommission(app.accountKeeper, app.distrKeeper)},
 		{5, govsim.SimulateSubmittingVotingAndSlashingForProposal(app.govKeeper, govsim.SimulateTextProposalContent)},
 		{5, govsim.SimulateSubmittingVotingAndSlashingForProposal(app.govKeeper, paramsim.SimulateParamChangeProposalContent)},
-		{100, govsim.SimulateMsgDeposit(app.govKeeper)},
+		{300, govsim.SimulateMsgDeposit(app.govKeeper)},
 		{100, stakingsim.SimulateMsgCreateValidator(app.accountKeeper, app.stakingKeeper)},
 		{5, stakingsim.SimulateMsgEditValidator(app.stakingKeeper)},
 		{100, stakingsim.SimulateMsgDelegate(app.accountKeeper, app.stakingKeeper)},

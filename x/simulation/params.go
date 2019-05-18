@@ -74,7 +74,7 @@ var (
 			return time.Duration(RandIntBetween(r, 60, 60*60*24*3*2)) * time.Second
 		},
 		"MaxValidators": func(r *rand.Rand) interface{} {
-			return uint16(r.Intn(250) + 1)
+			return uint16(r.Intn(250) + 200)
 		},
 		"SignedBlocksWindow": func(r *rand.Rand) interface{} {
 			return int64(RandIntBetween(r, 10, 1000))
@@ -132,7 +132,7 @@ func DefaultParams() Params {
 func RandomParams(r *rand.Rand) Params {
 	return Params{
 		PastEvidenceFraction:      r.Float64(),
-		NumKeys:                   RandIntBetween(r, 2, 250),
+		NumKeys:                   RandIntBetween(r, 200, 500),
 		EvidenceFraction:          r.Float64(),
 		InitialLivenessWeightings: []int{RandIntBetween(r, 1, 80), r.Intn(10), r.Intn(10)},
 		LivenessTransitionMatrix:  defaultLivenessTransitionMatrix,
