@@ -4,7 +4,7 @@ import os
 import random
 import subprocess
 
-def generate_params_file():
+def generate_params():
     params = {
         'send_enabled': random.choice([False, True]),
         'max_memo_characters': random.randint(100, 200),
@@ -49,7 +49,7 @@ def writej(obj, f_path, overwrite=True):
 
 def run_test(seed):
     random.seed(seed)
-    params = generate_params_file()
+    params = generate_params()
     params_file = f'{seed}_params.json'
     writej(params, params_file)
     cmd = ' '.join([
@@ -67,8 +67,12 @@ def run_test(seed):
         '-v' ,'-timeout 24h', '-cover'
     ])
     res = subprocess.run(cmd, shell=True, capture_output=True)
-    writej({'stderr': res.stderr.decode("utf-8") , 'stdout': res.stdout.decode("utf-8") },
-        f'{seed}_output.json')
+    writej({
+        'stderr': res.stderr.decode('utf-8') ,
+        'stdout': res.stdout.decode('utf-8')
+        },
+        f'{seed}_output.json'
+    )
 
 if __name__ == '__main__':
     num_runs = 100
