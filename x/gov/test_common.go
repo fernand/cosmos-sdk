@@ -2,6 +2,7 @@ package gov
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"sort"
 	"testing"
@@ -155,6 +156,28 @@ func testProposal() Content {
 	return NewTextProposal("Test", "description")
 }
 
+const contextKeyBadProposal = "contextKeyBadProposal"
+
+// badProposalHandler implements a governance proposal handler that is identical
+// to the actual handler except this fails if the context doesn't contain a value
+// for the key contextKeyBadProposal or if the value is false.
+func badProposalHandler(ctx sdk.Context, c Content) sdk.Error {
+	switch c.ProposalType() {
+	case ProposalTypeText, ProposalTypeSoftwareUpgrade:
+		v := ctx.Value(contextKeyBadProposal)
+
+		if v == nil || !v.(bool) {
+			return sdk.ErrInternal("proposal failed")
+		}
+
+		return nil
+
+	default:
+		errMsg := fmt.Sprintf("unrecognized gov proposal type: %s", c.ProposalType())
+		return sdk.ErrUnknownRequest(errMsg)
+	}
+}
+
 // checks if two proposals are equal (note: slow, for tests only)
 func ProposalEqual(proposalA Proposal, proposalB Proposal) bool {
 	return bytes.Equal(types.ModuleCdc.MustMarshalBinaryBare(proposalA),
@@ -168,8 +191,8 @@ var (
 		ed25519.GenPrivKey().PubKey(),
 	}
 
-	testDescription   = staking.NewDescription("T", "E", "S", "T")
-	testCommissionMsg = staking.NewCommissionMsg(sdk.ZeroDec(), sdk.ZeroDec(), sdk.ZeroDec())
+	testDescription     = staking.NewDescription("T", "E", "S", "T")
+	testCommissionRates = staking.NewCommissionRates(sdk.ZeroDec(), sdk.ZeroDec(), sdk.ZeroDec())
 )
 
 func createValidators(t *testing.T, stakingHandler sdk.Handler, ctx sdk.Context, addrs []sdk.ValAddress, powerAmt []int64) {
@@ -180,7 +203,7 @@ func createValidators(t *testing.T, stakingHandler sdk.Handler, ctx sdk.Context,
 		valTokens := sdk.TokensFromTendermintPower(powerAmt[i])
 		valCreateMsg := staking.NewMsgCreateValidator(
 			addrs[i], pubkeys[i], sdk.NewCoin(sdk.DefaultBondDenom, valTokens),
-			testDescription, testCommissionMsg, sdk.OneInt(),
+			testDescription, testCommissionRates, sdk.OneInt(),
 		)
 
 		res := stakingHandler(ctx, valCreateMsg)
