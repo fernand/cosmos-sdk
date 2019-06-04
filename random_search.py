@@ -49,8 +49,9 @@ def writej(obj, f_path, overwrite=True):
 
 def run_test(seed):
     random.seed(seed)
-    params = generate_params_file(seed)
-    writej(params, f'{seed}_params.json')
+    params = generate_params_file()
+    params_file = f'{seed}_params.json'
+    writej(params, params_file)
     cmd = ' '.join([
         'go test',
         '-mod=readonly',
@@ -60,15 +61,16 @@ def run_test(seed):
         '-SimulationNumBlocks=100',
         '-SimulationBlockSize=200',
         '-SimulationCommit=true',
-        f'-SimulationParams={os.getcwd()}/params.json',
+        f'-SimulationParams={os.getcwd()}/{params_file}',
         f'-SimulationSeed={seed}',
         '-SimulationPeriod=5',
         '-v' ,'-timeout 24h', '-cover'
     ])
     res = subprocess.run(cmd, shell=True, capture_output=True)
-    writej({'stderr': res.stderr, 'stdout': res.stdout}, f'{seed}_output.json')
+    writej({'stderr': res.stderr.decode("utf-8") , 'stdout': res.stdout.decode("utf-8") },
+        f'{seed}_output.json')
 
 if __name__ == '__main__':
     num_runs = 100
     p = multiprocessing.Pool(multiprocessing.cpu_count())
-    p.map(run_test, [random.randint(0, 99999999999) for i in range(100)])
+    p.map(run_test, [random.randint(0, 99999999999) for i in range(num_runs)])
