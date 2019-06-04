@@ -1,10 +1,10 @@
 import json
+import multiprocessing
 import os
 import random
 import subprocess
 
-def generate_params_file(seed):
-    random.seed(seed)
+def generate_params_file():
     params = {
         'send_enabled': random.choice([False, True]),
         'max_memo_characters': random.randint(100, 200),
@@ -47,25 +47,28 @@ def writej(obj, f_path, overwrite=True):
     with open(f_path, 'w') as f:
         json.dump(obj, f)
 
+def run_test(seed):
+    random.seed(seed)
+    params = generate_params_file(seed)
+    writej(params, f'{seed}_params.json')
+    cmd = ' '.join([
+        'go test',
+        '-mod=readonly',
+        'github.com/cosmos/cosmos-sdk/simapp',
+        '-run TestFullAppSimulation',
+        '-SimulationEnabled=true',
+        '-SimulationNumBlocks=100',
+        '-SimulationBlockSize=200',
+        '-SimulationCommit=true',
+        f'-SimulationParams={os.getcwd()}/params.json',
+        f'-SimulationSeed={seed}',
+        '-SimulationPeriod=5',
+        '-v' ,'-timeout 24h', '-cover'
+    ])
+    res = subprocess.run(cmd, shell=True, capture_output=True)
+    writej({'stderr': res.stderr, 'stdout': res.stdout}, f'{seed}_output.json')
+
 if __name__ == '__main__':
-    seed = 8090485
-    obj = generate_params_file(seed)
-    writej(obj, 'params.json')
-    env = os.environ.copy()
-    cmd = [
-        "go test",
-        "-mod=readonly",
-        "github.com/cosmos/cosmos-sdk/simapp",
-        "-run TestFullAppSimulation",
-        "-SimulationEnabled=true",
-        "-SimulationNumBlocks=100",
-        "-SimulationBlockSize=200",
-        "-SimulationCommit=true",
-        f"-SimulationParams={os.getcwd()}/params.json",
-        f"-SimulationSeed={seed}",
-        "-SimulationPeriod=5",
-        "-v" ,"-timeout 24h", "-cover"
-    ]
-    res = subprocess.run(' '.join(cmd), shell=True, capture_output=True, env=env)
-    print(res.stderr)
-    print(res.stdout)
+    num_runs = 100
+    p = multiprocessing.Pool(multiprocessing.cpu_count())
+    p.map(run_test, [random.randint(0, 99999999999) for i in range(100)])
