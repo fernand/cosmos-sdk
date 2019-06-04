@@ -1,0 +1,71 @@
+import json
+import os
+import random
+import subprocess
+
+def generate_params_file(seed):
+    random.seed(seed)
+    params = {
+        'send_enabled': random.choice([False, True]),
+        'max_memo_characters': random.randint(100, 200),
+        'tx_sig_limit': random.randint(1, 7),
+        'tx_size_cost_per_byte': random.randint(5, 15),
+        'sig_verify_cost_ed25519': random.randint(100, 500),
+        'sig_verify_cost_secp256k1': random.randint(100, 500),
+        'deposit_params_min_deposit': [{'denom': 'stake', 'amount': str(random.randint(1, 1000))}],
+        'voting_params_voting_period': 1000**3 * random.randint(1, 2*60*60*24*2),
+        'tally_params_quorum': round(random.randint(334, 500) / 1000, 3),
+        'tally_params_threshold': round(random.randint(450, 550) / 1000, 3),
+        'tally_params_veto': round(random.randint(250, 334) / 1000, 3),
+        'unbonding_time': 1000**3 * random.randint(60, 60*60*24*3*2),
+        'max_validators': random.randint(1, 250),
+        'signed_blocks_window': random.randint(10, 1000),
+        'min_signed_per_window': round(random.randint(0, 10) / 10, 1),
+        'downtime_jail_duration': 1000**3 * random.randint(60, 60*60*24),
+        'slash_fraction_double_sign': round(1 / random.randint(1, 50), 18),
+        'slash_fraction_downtime': round(1 / random.randint(1, 200), 18),
+        'inflation_rate_change': round(random.randint(0, 99) / 100, 2),
+        'inflation': round(random.randint(0, 99) / 100, 2),
+        'inflation_max': 0.2,
+        'inflation_min': 0.07,
+        'goal_bonded': 0.67,
+        'community_tax': 0.01 + round(random.randint(0, 30) / 100, 2),
+        'base_proposer_reward': 0.01 + round(random.randint(0, 30) / 100, 2),
+        'bonus_proposer_reward': 0.01 + round(random.randint(0, 30) / 100, 2)
+    }
+    for k, v in params.items():
+        if k not in ['send_enabled', 'deposit_params_min_deposit', 'max_validators']:
+            params[k] = str(v)
+    return params
+
+def writej(obj, f_path, overwrite=True):
+    if os.path.exists(f_path):
+        if overwrite:
+            os.remove(f_path)
+        else:
+            return
+    with open(f_path, 'w') as f:
+        json.dump(obj, f)
+
+if __name__ == '__main__':
+    seed = 8090485
+    obj = generate_params_file(seed)
+    writej(obj, 'params.json')
+    env = os.environ.copy()
+    cmd = [
+        "go test",
+        "-mod=readonly",
+        "github.com/cosmos/cosmos-sdk/simapp",
+        "-run TestFullAppSimulation",
+        "-SimulationEnabled=true",
+        "-SimulationNumBlocks=100",
+        "-SimulationBlockSize=200",
+        "-SimulationCommit=true",
+        f"-SimulationParams={os.getcwd()}/params.json",
+        f"-SimulationSeed={seed}",
+        "-SimulationPeriod=5",
+        "-v" ,"-timeout 24h", "-cover"
+    ]
+    res = subprocess.run(' '.join(cmd), shell=True, capture_output=True, env=env)
+    print(res.stderr)
+    print(res.stdout)
