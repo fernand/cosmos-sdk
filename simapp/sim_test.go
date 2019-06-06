@@ -56,7 +56,7 @@ var (
 
 func init() {
 	flag.StringVar(&genesisFile, "SimulationGenesis", "", "custom simulation genesis file; cannot be used with params file")
-	flag.StringVar(&paramsFile, "SimulationParams", "", "custom simulation params file; overrides any random params and cannot be used with genesis")
+	flag.StringVar(&paramsFile, "SimulationParams", "", "custom simulation params file which overrides any random params; cannot be used with genesis")
 	flag.Int64Var(&seed, "SimulationSeed", 42, "simulation random seed")
 	flag.IntVar(&numBlocks, "SimulationNumBlocks", 500, "number of blocks")
 	flag.IntVar(&blockSize, "SimulationBlockSize", 200, "operations per block")
@@ -212,7 +212,7 @@ func genAuthGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParams
 		),
 	)
 
-	fmt.Printf("Selected randomly generated auth parameters:\n%s\n", mustMarshalJSONIndent(cdc, authGenesis.Params))
+	fmt.Printf("Selected randomly generated auth parameters:\n%s\n", codec.MustMarshalJSONIndent(cdc, authGenesis.Params))
 	genesisState[auth.ModuleName] = cdc.MustMarshalJSON(authGenesis)
 }
 
@@ -225,7 +225,7 @@ func genBankGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParams
 		}(r),
 	)
 
-	fmt.Printf("Selected randomly generated bank parameters:\n%s\n", mustMarshalJSONIndent(cdc, bankGenesis))
+	fmt.Printf("Selected randomly generated bank parameters:\n%s\n", codec.MustMarshalJSONIndent(cdc, bankGenesis))
 	genesisState[bank.ModuleName] = cdc.MustMarshalJSON(bankGenesis)
 }
 
@@ -321,7 +321,7 @@ func genGovGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParams,
 		),
 	)
 
-	fmt.Printf("Selected randomly generated governance parameters:\n%s\n", mustMarshalJSONIndent(cdc, govGenesis))
+	fmt.Printf("Selected randomly generated governance parameters:\n%s\n", codec.MustMarshalJSONIndent(cdc, govGenesis))
 	genesisState[gov.ModuleName] = cdc.MustMarshalJSON(govGenesis)
 }
 
@@ -360,12 +360,11 @@ func genMintGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParams
 		),
 	)
 
-	fmt.Printf("Selected randomly generated minting parameters:\n%s\n", mustMarshalJSONIndent(cdc, mintGenesis.Params))
+	fmt.Printf("Selected randomly generated minting parameters:\n%s\n", codec.MustMarshalJSONIndent(cdc, mintGenesis.Params))
 	genesisState[mint.ModuleName] = cdc.MustMarshalJSON(mintGenesis)
 }
 
 func genDistrGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParams, genesisState map[string]json.RawMessage) {
-	// TODO: make use NewGenesisState
 	distrGenesis := distr.GenesisState{
 		FeePool: distr.InitialFeePool(),
 		CommunityTax: func(r *rand.Rand) sdk.Dec {
@@ -385,7 +384,7 @@ func genDistrGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParam
 		}(r),
 	}
 
-	fmt.Printf("Selected randomly generated distribution parameters:\n%s\n", mustMarshalJSONIndent(cdc, distrGenesis))
+	fmt.Printf("Selected randomly generated distribution parameters:\n%s\n", codec.MustMarshalJSONIndent(cdc, distrGenesis))
 	genesisState[distr.ModuleName] = cdc.MustMarshalJSON(distrGenesis)
 }
 
@@ -426,7 +425,7 @@ func genSlashingGenesisState(
 		nil,
 	)
 
-	fmt.Printf("Selected randomly generated slashing parameters:\n%s\n", mustMarshalJSONIndent(cdc, slashingGenesis.Params))
+	fmt.Printf("Selected randomly generated slashing parameters:\n%s\n", codec.MustMarshalJSONIndent(cdc, slashingGenesis.Params))
 	genesisState[slashing.ModuleName] = cdc.MustMarshalJSON(slashingGenesis)
 }
 
@@ -477,30 +476,154 @@ func genStakingGenesisState(
 	stakingGenesis.Validators = validators
 	stakingGenesis.Delegations = delegations
 
-	fmt.Printf("Selected randomly generated staking parameters:\n%s\n", mustMarshalJSONIndent(cdc, stakingGenesis.Params))
+	fmt.Printf("Selected randomly generated staking parameters:\n%s\n", codec.MustMarshalJSONIndent(cdc, stakingGenesis.Params))
 	genesisState[staking.ModuleName] = cdc.MustMarshalJSON(stakingGenesis)
 
 	return stakingGenesis
 }
 
 func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
+	cdc := MakeCodec()
+	ap := make(simulation.AppParams)
+
+	if paramsFile != "" {
+		bz, err := ioutil.ReadFile(paramsFile)
+		if err != nil {
+			panic(err)
+		}
+
+		cdc.MustUnmarshalJSON(bz, &ap)
+	}
+
 	return []simulation.WeightedOperation{
-		{5, authsim.SimulateDeductFee(app.accountKeeper, app.feeCollectionKeeper)},
-		{100, banksim.SimulateMsgSend(app.accountKeeper, app.bankKeeper)},
-		{10, banksim.SimulateSingleInputMsgMultiSend(app.accountKeeper, app.bankKeeper)},
-		{50, distrsim.SimulateMsgSetWithdrawAddress(app.accountKeeper, app.distrKeeper)},
-		{50, distrsim.SimulateMsgWithdrawDelegatorReward(app.accountKeeper, app.distrKeeper)},
-		{50, distrsim.SimulateMsgWithdrawValidatorCommission(app.accountKeeper, app.distrKeeper)},
-		{5, govsim.SimulateSubmittingVotingAndSlashingForProposal(app.govKeeper, govsim.SimulateTextProposalContent)},
-		{5, govsim.SimulateSubmittingVotingAndSlashingForProposal(app.govKeeper, distrsim.SimulateCommunityPoolSpendProposalContent(app.distrKeeper))},
-		{5, govsim.SimulateSubmittingVotingAndSlashingForProposal(app.govKeeper, paramsim.SimulateParamChangeProposalContent)},
-		{300, govsim.SimulateMsgDeposit(app.govKeeper)},
-		{100, stakingsim.SimulateMsgCreateValidator(app.accountKeeper, app.stakingKeeper)},
-		{5, stakingsim.SimulateMsgEditValidator(app.stakingKeeper)},
-		{100, stakingsim.SimulateMsgDelegate(app.accountKeeper, app.stakingKeeper)},
-		{100, stakingsim.SimulateMsgUndelegate(app.accountKeeper, app.stakingKeeper)},
-		{100, stakingsim.SimulateMsgBeginRedelegate(app.accountKeeper, app.stakingKeeper)},
-		{100, slashingsim.SimulateMsgUnjail(app.slashingKeeper)},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_deduct_fee", &v, nil, func(_ *rand.Rand) { v = 5 })
+				return v
+			}(nil),
+			authsim.SimulateDeductFee(app.accountKeeper, app.feeCollectionKeeper),
+		},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_msg_send", &v, nil, func(_ *rand.Rand) { v = 100 })
+				return v
+			}(nil),
+			banksim.SimulateMsgSend(app.accountKeeper, app.bankKeeper),
+		},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_single_input_msg_multisend", &v, nil, func(_ *rand.Rand) { v = 10 })
+				return v
+			}(nil),
+			banksim.SimulateSingleInputMsgMultiSend(app.accountKeeper, app.bankKeeper),
+		},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_msg_set_withdraw_address", &v, nil, func(_ *rand.Rand) { v = 50 })
+				return v
+			}(nil),
+			distrsim.SimulateMsgSetWithdrawAddress(app.accountKeeper, app.distrKeeper),
+		},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_msg_withdraw_delegation_reward", &v, nil, func(_ *rand.Rand) { v = 50 })
+				return v
+			}(nil),
+			distrsim.SimulateMsgWithdrawDelegatorReward(app.accountKeeper, app.distrKeeper),
+		},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_msg_withdraw_validator_commission", &v, nil, func(_ *rand.Rand) { v = 50 })
+				return v
+			}(nil),
+			distrsim.SimulateMsgWithdrawValidatorCommission(app.accountKeeper, app.distrKeeper),
+		},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_submit_voting_slashing_text_proposal", &v, nil, func(_ *rand.Rand) { v = 5 })
+				return v
+			}(nil),
+			govsim.SimulateSubmittingVotingAndSlashingForProposal(app.govKeeper, govsim.SimulateTextProposalContent),
+		},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_submit_voting_slashing_community_spend_proposal", &v, nil, func(_ *rand.Rand) { v = 5 })
+				return v
+			}(nil),
+			govsim.SimulateSubmittingVotingAndSlashingForProposal(app.govKeeper, distrsim.SimulateCommunityPoolSpendProposalContent(app.distrKeeper)),
+		},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_submit_voting_slashing_param_change_proposal", &v, nil, func(_ *rand.Rand) { v = 5 })
+				return v
+			}(nil),
+			govsim.SimulateSubmittingVotingAndSlashingForProposal(app.govKeeper, paramsim.SimulateParamChangeProposalContent),
+		},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_msg_deposit", &v, nil, func(_ *rand.Rand) { v = 100 })
+				return v
+			}(nil),
+			govsim.SimulateMsgDeposit(app.govKeeper),
+		},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_msg_create_validator", &v, nil, func(_ *rand.Rand) { v = 100 })
+				return v
+			}(nil),
+			stakingsim.SimulateMsgCreateValidator(app.accountKeeper, app.stakingKeeper),
+		},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_msg_edit_validator", &v, nil, func(_ *rand.Rand) { v = 5 })
+				return v
+			}(nil),
+			stakingsim.SimulateMsgEditValidator(app.stakingKeeper),
+		},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_msg_delegate", &v, nil, func(_ *rand.Rand) { v = 100 })
+				return v
+			}(nil),
+			stakingsim.SimulateMsgDelegate(app.accountKeeper, app.stakingKeeper),
+		},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_msg_undelegate", &v, nil, func(_ *rand.Rand) { v = 100 })
+				return v
+			}(nil),
+			stakingsim.SimulateMsgUndelegate(app.accountKeeper, app.stakingKeeper),
+		},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_msg_begin_redelegate", &v, nil, func(_ *rand.Rand) { v = 100 })
+				return v
+			}(nil),
+			stakingsim.SimulateMsgBeginRedelegate(app.accountKeeper, app.stakingKeeper),
+		},
+		{
+			func(_ *rand.Rand) int {
+				var v int
+				ap.GetOrGenerate(cdc, "op_weight_msg_unjail", &v, nil, func(_ *rand.Rand) { v = 100 })
+				return v
+			}(nil),
+			slashingsim.SimulateMsgUnjail(app.slashingKeeper),
+		},
 	}
 }
 
