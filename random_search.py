@@ -64,7 +64,7 @@ def run_test(seed):
         f'-SimulationParams={os.getcwd()}/{params_file}',
         f'-SimulationSeed={seed}',
         '-SimulationPeriod=5',
-        '-v' ,'-timeout 24h', '-cover'
+        '-v' ,'-timeout 24h', '-coverpkg=./...'
     ])
     res = subprocess.run(cmd, shell=True, capture_output=True)
     writej({
