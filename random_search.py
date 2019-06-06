@@ -31,7 +31,22 @@ def generate_params():
         'goal_bonded': 0.67,
         'community_tax': 0.01 + round(random.randint(0, 30) / 100, 2),
         'base_proposer_reward': 0.01 + round(random.randint(0, 30) / 100, 2),
-        'bonus_proposer_reward': 0.01 + round(random.randint(0, 30) / 100, 2)
+        'bonus_proposer_reward': 0.01 + round(random.randint(0, 30) / 100, 2),
+        'op_weight_deduct_fee': random.randint(2, 20),
+        'op_weight_msg_send': random.randint(25, 175),
+        'op_weight_single_input_msg_multisend': random.randint(2, 20),
+        'op_weight_msg_set_withdraw_address': random.randint(20, 100),
+        'op_weight_msg_withdraw_validator_commission': random.randint(20, 100),
+        'op_weight_submit_voting_slashing_text_proposal': random.randint(2, 20),
+        'op_weight_submit_voting_slashing_community_spend_proposal': random.randint(2, 20),
+        'op_weight_submit_voting_slashing_param_change_proposal': random.randint(2, 20),
+        'op_weight_msg_deposit': random.randint(25, 400),
+        'op_weight_msg_create_validator': random.randint(25, 175),
+        'op_weight_msg_edit_validator': random.randint(2, 20),
+        'op_weight_msg_delegate': random.randint(25, 175),
+        'op_weight_msg_undelegate': random.randint(25, 175),
+        'op_weight_msg_begin_redelegate': random.randint(25, 175),
+        'op_weight_msg_unjail': random.randint(25, 175)
     }
     for k, v in params.items():
         if k not in ['send_enabled', 'deposit_params_min_deposit', 'max_validators']:
