@@ -6,7 +6,7 @@ import subprocess
 
 def generate_params():
     params = {
-        'send_enabled': random.choice([False, True]),
+        'send_enabled': True,
         'max_memo_characters': random.randint(100, 200),
         'tx_sig_limit': random.randint(1, 7),
         'tx_size_cost_per_byte': random.randint(5, 15),
