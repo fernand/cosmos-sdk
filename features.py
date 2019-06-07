@@ -1,6 +1,6 @@
+import collections
 import os
 import json
-import shutil
 
 def writej(obj, f_path, overwrite=True):
     if os.path.exists(f_path):
@@ -23,7 +23,7 @@ with open('features.csv', 'w') as w:
     for f in files:
         params = loadj(f.split('_')[0]+'_params.json')
         features = []
-        for k,v in params.items():
+        for k in collections.OrderedDict(sorted(params.items())):
             if k == 'send_enabled':
                 feature = "1.0" if params[k] else "0.0"
             elif k == 'deposit_params_min_deposit':
