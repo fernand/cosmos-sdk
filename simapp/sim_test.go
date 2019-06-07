@@ -628,7 +628,8 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 }
 
 func invariants(app *SimApp) []sdk.Invariant {
-	return simulation.PeriodicInvariants(app.crisisKeeper.Invariants(), period, 0)
+	return []sdk.Invariant{}
+	// return simulation.PeriodicInvariants(app.crisisKeeper.Invariants(), period, 0)
 }
 
 // Pass this in as an option to use a dbStoreAdapter instead of an IAVLStore for simulation speed.

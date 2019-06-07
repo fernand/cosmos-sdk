@@ -90,6 +90,6 @@ def run_test(seed):
     )
 
 if __name__ == '__main__':
-    num_runs = 100
+    num_runs = 500
     p = multiprocessing.Pool(multiprocessing.cpu_count())
     p.map(run_test, [random.randint(0, 99999999999) for i in range(num_runs)])
