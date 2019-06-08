@@ -27,5 +27,5 @@ for f in files:
     last_line = output['stdout'].split('\n')[-2]
     pct = float(last_line.split('\t')[-1].split(' ')[1][:-1])
     cvg[f] = pct
-for k,v in sorted(cvg.items(), key=lambda kv: kv[1], reverse=True)[:20]:
+for k,v in sorted(cvg.items(), key=lambda kv: kv[1], reverse=True)[:150]:
     print(k, v)
