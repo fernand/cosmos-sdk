@@ -4,6 +4,8 @@ import os
 import random
 import subprocess
 
+PREFIX='data/'
+
 def generate_params():
     params = {
         'send_enabled': True,
@@ -65,7 +67,7 @@ def writej(obj, f_path, overwrite=True):
 def run_test(seed):
     random.seed(seed)
     params = generate_params()
-    params_file = f'{seed}_params.json'
+    params_file = PREFIX + f'{seed}_params.json'
     writej(params, params_file)
     cmd = ' '.join([
         'go test',
@@ -86,7 +88,7 @@ def run_test(seed):
         'stderr': res.stderr.decode('utf-8') ,
         'stdout': res.stdout.decode('utf-8')
         },
-        f'{seed}_output.json'
+        PREFIX + f'{seed}_output.json'
     )
 
 if __name__ == '__main__':

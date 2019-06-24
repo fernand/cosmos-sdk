@@ -2,7 +2,10 @@ import collections
 import os
 import json
 
+PREFIX='data/'
+
 def writej(obj, f_path, overwrite=True):
+    f_path = PREFIX + f_path
     if os.path.exists(f_path):
         if overwrite:
             os.remove(f_path)
@@ -12,13 +15,14 @@ def writej(obj, f_path, overwrite=True):
         json.dump(obj, f)
 
 def loadj(f_path):
+    f_path = PREFIX + f_path
     if not os.path.exists(f_path):
         return None
     else:
         with open(f_path) as f:
             return json.load(f)
 
-files = [p for p in os.listdir() if p.endswith('output.json')]
+files = [p for p in os.listdir(PREFIX) if p.endswith('output.json')]
 with open('features.csv', 'w') as w:
     for f in files:
         params = loadj(f.split('_')[0]+'_params.json')
