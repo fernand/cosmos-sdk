@@ -26,7 +26,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/auth/genaccounts"
 	authsim "github.com/cosmos/cosmos-sdk/x/auth/simulation"
 	"github.com/cosmos/cosmos-sdk/x/bank"
-	banksim "github.com/cosmos/cosmos-sdk/x/bank/simulation"
 	distr "github.com/cosmos/cosmos-sdk/x/distribution"
 	distrsim "github.com/cosmos/cosmos-sdk/x/distribution/simulation"
 	"github.com/cosmos/cosmos-sdk/x/gov"
@@ -113,35 +112,158 @@ func appStateFromGenesisFileFn(
 
 // TODO refactor out random initialization code to the modules
 func appStateRandomizedFn(
-	r *rand.Rand, accs []simulation.Account, genesisTimestamp time.Time,
+	r *rand.Rand, accs []simulation.Account, genesisTimestamp time.Time, appParams simulation.AppParams,
 ) (json.RawMessage, []simulation.Account, string) {
 
 	cdc := MakeCodec()
-	appParams := make(simulation.AppParams)
 	genesisState := NewDefaultGenesisState()
 
-	if paramsFile != "" {
+	var (
+		amount             int64
+		numInitiallyBonded int64
+	)
+
+	appParams.GetOrGenerate(cdc, StakePerAccount, &amount, r,
+		func(r *rand.Rand) { amount = int64(r.Intn(1e12)) })
+	appParams.GetOrGenerate(cdc, InitiallyBondedValidators, &amount, r,
+		func(r *rand.Rand) { numInitiallyBonded = int64(r.Intn(250)) })
+
+	numAccs := int64(len(accs))
+	if numInitiallyBonded > numAccs {
+		numInitiallyBonded = numAccs
+	}
+
+	fmt.Printf(
+		`Selected randomly generated parameters for simulated genesis:
+{
+  stake_per_account: "%v",
+  initially_bonded_validators: "%v"
+}
+`, amount, numInitiallyBonded,
+	)
+
+	genGenesisAccounts(cdc, r, accs, genesisTimestamp, amount, numInitiallyBonded, genesisState)
+	genAuthGenesisState(cdc, r, appParams, genesisState)
+	genBankGenesisState(cdc, r, appParams, genesisState)
+	genGovGenesisState(cdc, r, appParams, genesisState)
+	genMintGenesisState(cdc, r, appParams, genesisState)
+	genDistrGenesisState(cdc, r, appParams, genesisState)
+	stakingGen := genStakingGenesisState(cdc, r, accs, amount, numAccs, numInitiallyBonded, appParams, genesisState)
+	genSlashingGenesisState(cdc, r, stakingGen, appParams, genesisState)
+
+	appState, err := MakeCodec().MarshalJSON(genesisState)
+	if err != nil {
+		panic(err)
+	}
+
+	return appState, accs, "simulation"
+}
+
+func appStateFn(
+	r *rand.Rand, accs []simulation.Account, genesisTimestamp time.Time,
+) (appState json.RawMessage, simAccs []simulation.Account, chainID string) {
+
+	cdc := MakeCodec()
+
+	switch {
+	case paramsFile != "" && genesisFile != "":
+		panic("cannot provide both a genesis file and a params file")
+
+	case genesisFile != "":
+		appState, simAccs, chainID = appStateFromGenesisFileFn(r, accs, genesisTimestamp)
+
+	case paramsFile != "":
+		appParams := make(simulation.AppParams)
 		bz, err := ioutil.ReadFile(paramsFile)
 		if err != nil {
 			panic(err)
 		}
 
 		cdc.MustUnmarshalJSON(bz, &appParams)
+		appState, simAccs, chainID = appStateRandomizedFn(r, accs, genesisTimestamp, appParams)
+
+	default:
+		appParams := make(simulation.AppParams)
+		appState, simAccs, chainID = appStateRandomizedFn(r, accs, genesisTimestamp, appParams)
 	}
 
-	var (
-		genesisAccounts    []genaccounts.GenesisAccount
-		amount             int64
-		numInitiallyBonded int64
+	return appState, simAccs, chainID
+}
+
+func genAuthGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParams, genesisState map[string]json.RawMessage) {
+	authGenesis := auth.NewGenesisState(
+		nil,
+		auth.NewParams(
+			func(r *rand.Rand) uint64 {
+				var v uint64
+				ap.GetOrGenerate(cdc, simulation.MaxMemoChars, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.MaxMemoChars](r).(uint64)
+					})
+				return v
+			}(r),
+			func(r *rand.Rand) uint64 {
+				var v uint64
+				ap.GetOrGenerate(cdc, simulation.TxSigLimit, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.TxSigLimit](r).(uint64)
+					})
+				return v
+			}(r),
+			func(r *rand.Rand) uint64 {
+				var v uint64
+				ap.GetOrGenerate(cdc, simulation.TxSizeCostPerByte, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.TxSizeCostPerByte](r).(uint64)
+					})
+				return v
+			}(r),
+			func(r *rand.Rand) uint64 {
+				var v uint64
+				ap.GetOrGenerate(cdc, simulation.SigVerifyCostED25519, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.SigVerifyCostED25519](r).(uint64)
+					})
+				return v
+			}(r),
+			func(r *rand.Rand) uint64 {
+				var v uint64
+				ap.GetOrGenerate(cdc, simulation.SigVerifyCostSECP256K1, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.SigVerifyCostSECP256K1](r).(uint64)
+					})
+				return v
+			}(r),
+		),
 	)
 
-	appParams.GetOrGenerate(cdc, "stake_per_account", &amount, r, func(r *rand.Rand) { amount = int64(r.Intn(1e12)) })
-	appParams.GetOrGenerate(cdc, "initially_bonded_validators", &amount, r, func(r *rand.Rand) { numInitiallyBonded = int64(r.Intn(250)) })
+	fmt.Printf("Selected randomly generated auth parameters:\n%s\n", codec.MustMarshalJSONIndent(cdc, authGenesis.Params))
+	genesisState[auth.ModuleName] = cdc.MustMarshalJSON(authGenesis)
+}
 
-	numAccs := int64(len(accs))
-	if numInitiallyBonded > numAccs {
-		numInitiallyBonded = numAccs
-	}
+func genBankGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParams, genesisState map[string]json.RawMessage) {
+	bankGenesis := bank.NewGenesisState(
+		func(r *rand.Rand) bool {
+			var v bool
+			ap.GetOrGenerate(cdc, simulation.SendEnabled, &v, r,
+				func(r *rand.Rand) {
+					v = simulation.ModuleParamSimulator[simulation.SendEnabled](r).(bool)
+				})
+			return v
+		}(r),
+	)
+
+	fmt.Printf("Selected randomly generated bank parameters:\n%s\n", codec.MustMarshalJSONIndent(cdc, bankGenesis))
+	genesisState[bank.ModuleName] = cdc.MustMarshalJSON(bankGenesis)
+}
+
+func genGenesisAccounts(
+	cdc *codec.Codec, r *rand.Rand, accs []simulation.Account,
+	genesisTimestamp time.Time, amount, numInitiallyBonded int64,
+	genesisState map[string]json.RawMessage,
+) {
+
+	var genesisAccounts []genaccounts.GenesisAccount
 
 	fmt.Printf(
 		`Selected randomly generated parameters for simulated genesis:
@@ -252,8 +374,7 @@ func genGenesisAccounts(
 
 			startTime := genesisTimestamp.Unix()
 
-			// Allow for some vesting accounts to vest very quickly while others very
-			// slowly.
+			// Allow for some vesting accounts to vest very quickly while others very slowly.
 			if r.Intn(100) < 50 {
 				endTime = int64(simulation.RandIntBetween(r, int(startTime), int(startTime+(60*60*24*30))))
 			} else {
@@ -287,16 +408,20 @@ func genGenesisAccounts(
 
 func genGovGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParams, genesisState map[string]json.RawMessage) {
 	var vp time.Duration
-	ap.GetOrGenerate(cdc, "voting_params_voting_period", &vp, r, func(r *rand.Rand) {
-		vp = simulation.ModuleParamSimulator["voting_params_voting_period"](r).(time.Duration)
-	})
+	ap.GetOrGenerate(cdc, simulation.VotingParamsVotingPeriod, &vp, r,
+		func(r *rand.Rand) {
+			vp = simulation.ModuleParamSimulator[simulation.VotingParamsVotingPeriod](r).(time.Duration)
+		})
 
 	govGenesis := gov.NewGenesisState(
 		uint64(r.Intn(100)),
 		gov.NewDepositParams(
 			func(r *rand.Rand) sdk.Coins {
 				var v sdk.Coins
-				ap.GetOrGenerate(cdc, "deposit_params_min_deposit", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["deposit_params_min_deposit"](r).(sdk.Coins) })
+				ap.GetOrGenerate(cdc, simulation.DepositParamsMinDeposit, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.DepositParamsMinDeposit](r).(sdk.Coins)
+					})
 				return v
 			}(r),
 			vp,
@@ -305,17 +430,26 @@ func genGovGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParams,
 		gov.NewTallyParams(
 			func(r *rand.Rand) sdk.Dec {
 				var v sdk.Dec
-				ap.GetOrGenerate(cdc, "tally_params_quorum", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["tally_params_quorum"](r).(sdk.Dec) })
+				ap.GetOrGenerate(cdc, simulation.TallyParamsQuorum, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.TallyParamsQuorum](r).(sdk.Dec)
+					})
 				return v
 			}(r),
 			func(r *rand.Rand) sdk.Dec {
 				var v sdk.Dec
-				ap.GetOrGenerate(cdc, "tally_params_threshold", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["tally_params_threshold"](r).(sdk.Dec) })
+				ap.GetOrGenerate(cdc, simulation.TallyParamsThreshold, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.TallyParamsThreshold](r).(sdk.Dec)
+					})
 				return v
 			}(r),
 			func(r *rand.Rand) sdk.Dec {
 				var v sdk.Dec
-				ap.GetOrGenerate(cdc, "tally_params_veto", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["tally_params_veto"](r).(sdk.Dec) })
+				ap.GetOrGenerate(cdc, simulation.TallyParamsVeto, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.TallyParamsVeto](r).(sdk.Dec)
+					})
 				return v
 			}(r),
 		),
@@ -330,7 +464,10 @@ func genMintGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParams
 		mint.InitialMinter(
 			func(r *rand.Rand) sdk.Dec {
 				var v sdk.Dec
-				ap.GetOrGenerate(cdc, "inflation", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["inflation"](r).(sdk.Dec) })
+				ap.GetOrGenerate(cdc, simulation.Inflation, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.Inflation](r).(sdk.Dec)
+					})
 				return v
 			}(r),
 		),
@@ -338,22 +475,34 @@ func genMintGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParams
 			sdk.DefaultBondDenom,
 			func(r *rand.Rand) sdk.Dec {
 				var v sdk.Dec
-				ap.GetOrGenerate(cdc, "inflation_rate_change", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["inflation_rate_change"](r).(sdk.Dec) })
+				ap.GetOrGenerate(cdc, simulation.InflationRateChange, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.InflationRateChange](r).(sdk.Dec)
+					})
 				return v
 			}(r),
 			func(r *rand.Rand) sdk.Dec {
 				var v sdk.Dec
-				ap.GetOrGenerate(cdc, "inflation_max", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["inflation_max"](r).(sdk.Dec) })
+				ap.GetOrGenerate(cdc, simulation.InflationMax, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.InflationMax](r).(sdk.Dec)
+					})
 				return v
 			}(r),
 			func(r *rand.Rand) sdk.Dec {
 				var v sdk.Dec
-				ap.GetOrGenerate(cdc, "inflation_min", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["inflation_min"](r).(sdk.Dec) })
+				ap.GetOrGenerate(cdc, simulation.InflationMin, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.InflationMin](r).(sdk.Dec)
+					})
 				return v
 			}(r),
 			func(r *rand.Rand) sdk.Dec {
 				var v sdk.Dec
-				ap.GetOrGenerate(cdc, "goal_bonded", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["goal_bonded"](r).(sdk.Dec) })
+				ap.GetOrGenerate(cdc, simulation.GoalBonded, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.GoalBonded](r).(sdk.Dec)
+					})
 				return v
 			}(r),
 			uint64(60*60*8766/5),
@@ -369,17 +518,26 @@ func genDistrGenesisState(cdc *codec.Codec, r *rand.Rand, ap simulation.AppParam
 		FeePool: distr.InitialFeePool(),
 		CommunityTax: func(r *rand.Rand) sdk.Dec {
 			var v sdk.Dec
-			ap.GetOrGenerate(cdc, "community_tax", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["community_tax"](r).(sdk.Dec) })
+			ap.GetOrGenerate(cdc, simulation.CommunityTax, &v, r,
+				func(r *rand.Rand) {
+					v = simulation.ModuleParamSimulator[simulation.CommunityTax](r).(sdk.Dec)
+				})
 			return v
 		}(r),
 		BaseProposerReward: func(r *rand.Rand) sdk.Dec {
 			var v sdk.Dec
-			ap.GetOrGenerate(cdc, "base_proposer_reward", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["base_proposer_reward"](r).(sdk.Dec) })
+			ap.GetOrGenerate(cdc, simulation.BaseProposerReward, &v, r,
+				func(r *rand.Rand) {
+					v = simulation.ModuleParamSimulator[simulation.BaseProposerReward](r).(sdk.Dec)
+				})
 			return v
 		}(r),
 		BonusProposerReward: func(r *rand.Rand) sdk.Dec {
 			var v sdk.Dec
-			ap.GetOrGenerate(cdc, "bonus_proposer_reward", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["bonus_proposer_reward"](r).(sdk.Dec) })
+			ap.GetOrGenerate(cdc, simulation.BonusProposerReward, &v, r,
+				func(r *rand.Rand) {
+					v = simulation.ModuleParamSimulator[simulation.BonusProposerReward](r).(sdk.Dec)
+				})
 			return v
 		}(r),
 	}
@@ -397,27 +555,42 @@ func genSlashingGenesisState(
 			stakingGen.Params.UnbondingTime,
 			func(r *rand.Rand) int64 {
 				var v int64
-				ap.GetOrGenerate(cdc, "signed_blocks_window", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["signed_blocks_window"](r).(int64) })
+				ap.GetOrGenerate(cdc, simulation.SignedBlocksWindow, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.SignedBlocksWindow](r).(int64)
+					})
 				return v
 			}(r),
 			func(r *rand.Rand) sdk.Dec {
 				var v sdk.Dec
-				ap.GetOrGenerate(cdc, "min_signed_per_window", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["min_signed_per_window"](r).(sdk.Dec) })
+				ap.GetOrGenerate(cdc, simulation.MinSignedPerWindow, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.MinSignedPerWindow](r).(sdk.Dec)
+					})
 				return v
 			}(r),
 			func(r *rand.Rand) time.Duration {
 				var v time.Duration
-				ap.GetOrGenerate(cdc, "downtime_jail_duration", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["downtime_jail_duration"](r).(time.Duration) })
+				ap.GetOrGenerate(cdc, simulation.DowntimeJailDuration, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.DowntimeJailDuration](r).(time.Duration)
+					})
 				return v
 			}(r),
 			func(r *rand.Rand) sdk.Dec {
 				var v sdk.Dec
-				ap.GetOrGenerate(cdc, "slash_fraction_double_sign", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["slash_fraction_double_sign"](r).(sdk.Dec) })
+				ap.GetOrGenerate(cdc, simulation.SlashFractionDoubleSign, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.SlashFractionDoubleSign](r).(sdk.Dec)
+					})
 				return v
 			}(r),
 			func(r *rand.Rand) sdk.Dec {
 				var v sdk.Dec
-				ap.GetOrGenerate(cdc, "slash_fraction_downtime", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["slash_fraction_downtime"](r).(sdk.Dec) })
+				ap.GetOrGenerate(cdc, simulation.SlashFractionDowntime, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.SlashFractionDowntime](r).(sdk.Dec)
+					})
 				return v
 			}(r),
 		),
@@ -439,12 +612,18 @@ func genStakingGenesisState(
 		staking.NewParams(
 			func(r *rand.Rand) time.Duration {
 				var v time.Duration
-				ap.GetOrGenerate(cdc, "unbonding_time", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["unbonding_time"](r).(time.Duration) })
+				ap.GetOrGenerate(cdc, simulation.UnbondingTime, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.UnbondingTime](r).(time.Duration)
+					})
 				return v
 			}(r),
 			func(r *rand.Rand) uint16 {
 				var v uint16
-				ap.GetOrGenerate(cdc, "max_validators", &v, r, func(r *rand.Rand) { v = simulation.ModuleParamSimulator["max_validators"](r).(uint16) })
+				ap.GetOrGenerate(cdc, simulation.MaxValidators, &v, r,
+					func(r *rand.Rand) {
+						v = simulation.ModuleParamSimulator[simulation.MaxValidators](r).(uint16)
+					})
 				return v
 			}(r),
 			7,
@@ -499,7 +678,10 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_deduct_fee", &v, nil, func(_ *rand.Rand) { v = 5 })
+				ap.GetOrGenerate(cdc, OpWeightDeductFee, &v, nil,
+					func(_ *rand.Rand) {
+						v = 5
+					})
 				return v
 			}(nil),
 			authsim.SimulateDeductFee(app.accountKeeper, app.feeCollectionKeeper),
@@ -507,23 +689,32 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_msg_send", &v, nil, func(_ *rand.Rand) { v = 100 })
+				ap.GetOrGenerate(cdc, OpWeightMsgSend, &v, nil,
+					func(_ *rand.Rand) {
+						v = 100
+					})
 				return v
 			}(nil),
-			banksim.SimulateMsgSend(app.accountKeeper, app.bankKeeper),
+			bank.SimulateMsgSend(app.accountKeeper, app.bankKeeper),
 		},
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_single_input_msg_multisend", &v, nil, func(_ *rand.Rand) { v = 10 })
+				ap.GetOrGenerate(cdc, OpWeightSingleInputMsgMultiSend, &v, nil,
+					func(_ *rand.Rand) {
+						v = 10
+					})
 				return v
 			}(nil),
-			banksim.SimulateSingleInputMsgMultiSend(app.accountKeeper, app.bankKeeper),
+			bank.SimulateSingleInputMsgMultiSend(app.accountKeeper, app.bankKeeper),
 		},
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_msg_set_withdraw_address", &v, nil, func(_ *rand.Rand) { v = 50 })
+				ap.GetOrGenerate(cdc, OpWeightMsgSetWithdrawAddress, &v, nil,
+					func(_ *rand.Rand) {
+						v = 50
+					})
 				return v
 			}(nil),
 			distrsim.SimulateMsgSetWithdrawAddress(app.accountKeeper, app.distrKeeper),
@@ -531,7 +722,10 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_msg_withdraw_delegation_reward", &v, nil, func(_ *rand.Rand) { v = 50 })
+				ap.GetOrGenerate(cdc, OpWeightMsgWithdrawDelegationReward, &v, nil,
+					func(_ *rand.Rand) {
+						v = 50
+					})
 				return v
 			}(nil),
 			distrsim.SimulateMsgWithdrawDelegatorReward(app.accountKeeper, app.distrKeeper),
@@ -539,7 +733,10 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_msg_withdraw_validator_commission", &v, nil, func(_ *rand.Rand) { v = 50 })
+				ap.GetOrGenerate(cdc, OpWeightMsgWithdrawValidatorCommission, &v, nil,
+					func(_ *rand.Rand) {
+						v = 50
+					})
 				return v
 			}(nil),
 			distrsim.SimulateMsgWithdrawValidatorCommission(app.accountKeeper, app.distrKeeper),
@@ -547,7 +744,10 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_submit_voting_slashing_text_proposal", &v, nil, func(_ *rand.Rand) { v = 5 })
+				ap.GetOrGenerate(cdc, OpWeightSubmitVotingSlashingTextProposal, &v, nil,
+					func(_ *rand.Rand) {
+						v = 5
+					})
 				return v
 			}(nil),
 			govsim.SimulateSubmittingVotingAndSlashingForProposal(app.govKeeper, govsim.SimulateTextProposalContent),
@@ -555,7 +755,10 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_submit_voting_slashing_community_spend_proposal", &v, nil, func(_ *rand.Rand) { v = 5 })
+				ap.GetOrGenerate(cdc, OpWeightSubmitVotingSlashingCommunitySpendProposal, &v, nil,
+					func(_ *rand.Rand) {
+						v = 5
+					})
 				return v
 			}(nil),
 			govsim.SimulateSubmittingVotingAndSlashingForProposal(app.govKeeper, distrsim.SimulateCommunityPoolSpendProposalContent(app.distrKeeper)),
@@ -563,7 +766,10 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_submit_voting_slashing_param_change_proposal", &v, nil, func(_ *rand.Rand) { v = 5 })
+				ap.GetOrGenerate(cdc, OpWeightSubmitVotingSlashingParamChangeProposal, &v, nil,
+					func(_ *rand.Rand) {
+						v = 5
+					})
 				return v
 			}(nil),
 			govsim.SimulateSubmittingVotingAndSlashingForProposal(app.govKeeper, paramsim.SimulateParamChangeProposalContent),
@@ -571,7 +777,10 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_msg_deposit", &v, nil, func(_ *rand.Rand) { v = 100 })
+				ap.GetOrGenerate(cdc, OpWeightMsgDeposit, &v, nil,
+					func(_ *rand.Rand) {
+						v = 100
+					})
 				return v
 			}(nil),
 			govsim.SimulateMsgDeposit(app.govKeeper),
@@ -579,7 +788,10 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_msg_create_validator", &v, nil, func(_ *rand.Rand) { v = 100 })
+				ap.GetOrGenerate(cdc, OpWeightMsgCreateValidator, &v, nil,
+					func(_ *rand.Rand) {
+						v = 100
+					})
 				return v
 			}(nil),
 			stakingsim.SimulateMsgCreateValidator(app.accountKeeper, app.stakingKeeper),
@@ -587,7 +799,10 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_msg_edit_validator", &v, nil, func(_ *rand.Rand) { v = 5 })
+				ap.GetOrGenerate(cdc, OpWeightMsgEditValidator, &v, nil,
+					func(_ *rand.Rand) {
+						v = 5
+					})
 				return v
 			}(nil),
 			stakingsim.SimulateMsgEditValidator(app.stakingKeeper),
@@ -595,7 +810,10 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_msg_delegate", &v, nil, func(_ *rand.Rand) { v = 100 })
+				ap.GetOrGenerate(cdc, OpWeightMsgDelegate, &v, nil,
+					func(_ *rand.Rand) {
+						v = 100
+					})
 				return v
 			}(nil),
 			stakingsim.SimulateMsgDelegate(app.accountKeeper, app.stakingKeeper),
@@ -603,7 +821,10 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_msg_undelegate", &v, nil, func(_ *rand.Rand) { v = 100 })
+				ap.GetOrGenerate(cdc, OpWeightMsgUndelegate, &v, nil,
+					func(_ *rand.Rand) {
+						v = 100
+					})
 				return v
 			}(nil),
 			stakingsim.SimulateMsgUndelegate(app.accountKeeper, app.stakingKeeper),
@@ -611,7 +832,10 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_msg_begin_redelegate", &v, nil, func(_ *rand.Rand) { v = 100 })
+				ap.GetOrGenerate(cdc, OpWeightMsgBeginRedelegate, &v, nil,
+					func(_ *rand.Rand) {
+						v = 100
+					})
 				return v
 			}(nil),
 			stakingsim.SimulateMsgBeginRedelegate(app.accountKeeper, app.stakingKeeper),
@@ -619,7 +843,10 @@ func testAndRunTxs(app *SimApp) []simulation.WeightedOperation {
 		{
 			func(_ *rand.Rand) int {
 				var v int
-				ap.GetOrGenerate(cdc, "op_weight_msg_unjail", &v, nil, func(_ *rand.Rand) { v = 100 })
+				ap.GetOrGenerate(cdc, OpWeightMsgUnjail, &v, nil,
+					func(_ *rand.Rand) {
+						v = 100
+					})
 				return v
 			}(nil),
 			slashingsim.SimulateMsgUnjail(app.slashingKeeper),
